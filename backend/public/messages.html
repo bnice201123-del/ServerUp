@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Messages - ServerUp</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .message {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+        }
+        .message:last-child {
+            border-bottom: none;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            color: #666;
+        }
+        .message-name {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .message-date {
+            font-size: 0.9em;
+        }
+        .message-content {
+            color: #333;
+            line-height: 1.4;
+        }
+        .nav {
+            margin-bottom: 20px;
+        }
+        .nav a {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .nav a:hover {
+            background-color: #0056b3;
+        }
+        .no-messages {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+        #messageList {
+            min-height: 100px;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+        .search-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .search-container input,
+        .search-container select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .search-container input {
+            flex: 1;
+        }
+        .delete-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+            display: none;
+        }
+        .message:hover .delete-btn {
+            display: inline-block;
+        }
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/">Home</a>
+            <span id="authLinks">
+                <a href="/login" class="login-link">Login</a>
+            </span>
+        </div>
+        <h1>Messages</h1>
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Search messages...">
+            <select id="filterUser">
+                <option value="">All Users</option>
+            </select>
+        </div>
+        <div id="messageList">
+            <div class="loading">Loading messages...</div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = localStorage.getItem('username');
+        let currentToken = localStorage.getItem('token');
+        const userSet = new Set();
+
+        function updateAuthLinks() {
+            const authLinks = document.getElementById('authLinks');
+            if (currentToken && currentUser) {
+                authLinks.innerHTML = `
+                    <span>Welcome, ${escapeHtml(currentUser)}</span>
+                    <a href="#" onclick="logout()">Logout</a>
+                `;
+            } else {
+                authLinks.innerHTML = '<a href="/login">Login</a>';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            currentToken = null;
+            currentUser = null;
+            updateAuthLinks();
+            loadMessages();
+        }
+
+        async function deleteMessage(messageId) {
+            if (!currentToken) return;
+
+            try {
+                const response = await fetch(`/api/messages/${messageId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    loadMessages();
+                }
+            } catch (error) {
+                console.error('Error deleting message:', error);
+            }
+        }
+
+        async function loadMessages() {
+            const messageList = document.getElementById('messageList');
+            const searchInput = document.getElementById('searchInput');
+            const filterUser = document.getElementById('filterUser');
+            
+            try {
+                const params = new URLSearchParams();
+                if (searchInput.value) params.append('search', searchInput.value);
+                if (filterUser.value) params.append('username', filterUser.value);
+
+                const response = await fetch('/api/messages?' + params.toString());
+                const data = await response.json();
+                
+                if (data.messages.length === 0) {
+                    messageList.innerHTML = '<div class="no-messages">No messages found</div>';
+                    return;
+                }
+
+                // Update user filter options
+                data.messages.forEach(msg => userSet.add(msg.username));
+                updateUserFilter();
+
+                messageList.innerHTML = data.messages.map(msg => `
+                    <div class="message">
+                        <div class="message-header">
+                            <span class="message-name">${escapeHtml(msg.name)}</span>
+                            <span class="message-date">${new Date(msg.createdAt).toLocaleString()}</span>
+                            ${msg.username === currentUser ? 
+                                `<button class="delete-btn" onclick="deleteMessage('${msg._id}')">Delete</button>` : 
+                                ''}
+                        </div>
+                        <div class="message-content">${escapeHtml(msg.message)}</div>
+                        <div class="message-footer">
+                            <small>Posted by: ${escapeHtml(msg.username || 'Anonymous')}</small>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                messageList.innerHTML = '<div class="error">Error loading messages. Please try again.</div>';
+            }
+        }
+
+        function updateUserFilter() {
+            const filterUser = document.getElementById('filterUser');
+            const currentValue = filterUser.value;
+            
+            // Keep the first option (All Users)
+            filterUser.innerHTML = '<option value="">All Users</option>';
+            
+            // Add all unique usernames
+            Array.from(userSet).sort().forEach(username => {
+                filterUser.innerHTML += `<option value="${escapeHtml(username)}">${escapeHtml(username)}</option>`;
+            });
+
+            // Restore previous selection if it still exists
+            if (currentValue) filterUser.value = currentValue;
+        }
+
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Setup search and filter handlers
+        document.getElementById('searchInput').addEventListener('input', debounce(loadMessages, 300));
+        document.getElementById('filterUser').addEventListener('change', loadMessages);
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Initialize
+        updateAuthLinks();
+        loadMessages();
+
+        // Refresh messages periodically
+        setInterval(loadMessages, 30000);
+    </script>
+</body>
+</html>

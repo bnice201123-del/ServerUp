@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ServerUp Message Sender</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button, .nav a {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        button:hover, .nav a:hover {
+            background-color: #0056b3;
+        }
+        .nav {
+            margin-bottom: 20px;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/messages">View Messages</a>
+            <span id="authLinks">
+                <a href="/login">Login</a>
+            </span>
+        </div>
+        <h1>Send a Message</h1>
+        <form id="messageForm">
+            <div class="form-group">
+                <label for="name">Your Name:</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label for="message">Message:</label>
+                <textarea id="message" name="message" rows="4" required></textarea>
+            </div>
+            <button type="submit">Send Message</button>
+        </form>
+        <div id="response"></div>
+    </div>
+
+    <script>
+        let currentUser = localStorage.getItem('username');
+        let currentToken = localStorage.getItem('token');
+
+        function updateAuthLinks() {
+            const authLinks = document.getElementById('authLinks');
+            const form = document.getElementById('messageForm');
+            
+            if (currentToken && currentUser) {
+                authLinks.innerHTML = `
+                    <span>Welcome, ${escapeHtml(currentUser)}</span>
+                    <a href="#" onclick="logout()">Logout</a>
+                `;
+                form.style.display = 'block';
+            } else {
+                authLinks.innerHTML = '<a href="/login">Login to Send Messages</a>';
+                form.style.display = 'none';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            currentToken = null;
+            currentUser = null;
+            updateAuthLinks();
+        }
+
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        document.getElementById('messageForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentToken) {
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            const responseDiv = document.getElementById('response');
+            const name = document.getElementById('name').value;
+            const message = document.getElementById('message').value;
+            
+            try {
+                const response = await fetch('/api/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({ name, message })
+                });
+
+                const data = await response.json();
+                
+                responseDiv.textContent = data.message;
+                responseDiv.className = response.ok ? 'success' : 'error';
+                responseDiv.style.display = 'block';
+
+                if (response.ok) {
+                    // Clear form on success
+                    document.getElementById('messageForm').reset();
+                }
+
+                if (response.status === 401) {
+                    // Token expired or invalid
+                    logout();
+                }
+            } catch (error) {
+                responseDiv.textContent = 'Error sending message. Please try again.';
+                responseDiv.className = 'error';
+                responseDiv.style.display = 'block';
+            }
+        });
+
+        // Initialize auth state
+        updateAuthLinks();
+    </script>
+</body>
+</html>
