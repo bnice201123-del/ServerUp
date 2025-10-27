@@ -44,10 +44,21 @@ class Product {
 
     static async update(productId, updateData) {
         const products = getCollection();
-        
+        // Validate productId
+        const { ObjectId } = require('mongodb');
+        if (!ObjectId.isValid(productId)) {
+            return null;
+        }
+
+        // Prevent changing immutable fields
+        const sanitized = { ...updateData };
+        delete sanitized._id;
+        delete sanitized._rev;
+        delete sanitized.createdAt;
+
         // Always update the updatedAt timestamp
         const updates = {
-            ...updateData,
+            ...sanitized,
             updatedAt: new Date()
         };
 
@@ -57,7 +68,7 @@ class Product {
             { returnDocument: 'after' }
         );
 
-        return result.value;
+        return result.value || null;
     }
 
     static async delete(productId) {

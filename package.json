@@ -1,0 +1,10 @@
+{
+  "name": "serverup",
+  "version": "1.0.0",
+  "description": "ServerUp root package",
+  "private": true,
+  "scripts": {
+    "start": "cd backend && npm start",
+    "install": "cd backend && npm install"
+  }
+}
